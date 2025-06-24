@@ -8,10 +8,12 @@ import random
 
 
 class GameClient:
-    def __init__(self, server_host, server_port, team_id):
+    def __init__(self, server_host, server_port, player_id):
+        self.max_rounds = None
         self.server_host = server_host
         self.server_port = server_port
-        self.team_id = team_id
+        self.player_id = player_id
+        self.team_name = "A"
         self.client_socket = None
         self.running = False
         self.registered = False
@@ -35,13 +37,17 @@ class GameClient:
             return False
 
         register_msg = json.dumps({
-            "action": "register",
-            "team_id": self.team_id
+            "msgName": "register",
+            "msgData": {
+                "playerId": self.player_id,
+                "playerName": self.player_id,
+                "team_name": self.team_name
+            }
         })
 
         try:
             self.client_socket.send(register_msg.encode())
-            print(f"Sent registration for team: {self.team_id}")
+            print(f"Sent registration for team: {self.player_id}")
             self.registered = True
             return True
         except Exception as e:
@@ -88,26 +94,28 @@ class GameClient:
                 return
 
     def handle_message(self, message):
-        action = message.get('action')
+        msg_name = message.get('msgName')
+        msg_data = message.get('msgData')
         print(f"Received message: {message}")
 
-        if action == "gamestart":
-            self.handle_gamestart(message)
-        elif action == "inquiry":
-            self.handle_inquiry(message)
-        elif action == "gameover":
-            self.handle_gameover(message)
+        if msg_name == "gamestart":
+            self.handle_gamestart(msg_data)
+        elif msg_name == "inquiry":
+            self.handle_inquiry(msg_data)
+        elif msg_name == "gameover":
+            self.handle_gameover(msg_data)
 
-    def handle_gamestart(self, message):
+    def handle_gamestart(self, msg_data):
         self.game_active = True
-        self.max_rounds = message.get('max_rounds', 500)
+        self.max_rounds = msg_data.get('max_rounds', 500)
         print(f"Game starting! Max rounds: {self.max_rounds}")
 
         # 发送准备消息
         ready_msg = json.dumps({
-            "action": "gameready",
-            "team_id": self.team_id,
-            "status": "ready"
+            "msgName": "gameready",
+            "msgData": {
+                "playerId": self.player_id,
+                "status": "ready"}
         })
 
         try:
@@ -116,11 +124,11 @@ class GameClient:
         except Exception as e:
             print(f"Failed to send gameready: {e}")
 
-    def handle_inquiry(self, message):
+    def handle_inquiry(self, msg_data):
         if not self.game_active:
             return
 
-        self.current_round = message.get('round', 0)
+        self.current_round = msg_data.get('round', 0)
         print(f"Round {self.current_round} inquiry received")
 
         # 模拟游戏逻辑：生成随机响应
@@ -131,10 +139,11 @@ class GameClient:
 
         # 发送响应消息
         response_msg = json.dumps({
-            "action": "response",
-            "team_id": self.team_id,
-            "round": self.current_round,
-            "data": response_data
+            "msgName": "response",
+            "msgData": {
+                "playerId": self.player_id,
+                "round": self.current_round,
+                "data": response_data}
         })
 
         try:
@@ -143,9 +152,9 @@ class GameClient:
         except Exception as e:
             print(f"Failed to send response: {e}")
 
-    def handle_gameover(self, message):
-        reason = message.get('reason', "unknown")
-        total_rounds = message.get('total_rounds', 0)
+    def handle_gameover(self, msg_data):
+        reason = msg_data.get('reason', "unknown")
+        total_rounds = msg_data.get('total_rounds', 0)
         print(f"Game over: {reason}. Total rounds: {total_rounds}")
         self.shutdown()
 
@@ -155,7 +164,7 @@ class GameClient:
         if self.client_socket:
             try:
                 self.client_socket.close()
-            except:
+            finally:
                 pass
         print("Client shutdown")
         sys.exit(0)
@@ -172,7 +181,7 @@ if __name__ == "__main__":
     client = GameClient(
         server_host=args.server,
         server_port=args.port,
-        team_id=args.id
+        player_id=args.id
     )
 
     client.start()
